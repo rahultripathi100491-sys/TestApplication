@@ -3,96 +3,71 @@ name: Build and Deploy .NET API to Somee
 # ==========================================
 # WHEN TO RUN
 # ==========================================
-
 on:
   push:
     branches:
       - main
-
-  # Allows manual execution from GitHub Actions
   workflow_dispatch:
-
 
 # ==========================================
 # JOB
 # ==========================================
-
 jobs:
-
   build-and-deploy:
-
     name: Build and Deploy API
-
     runs-on: windows-latest
 
-
     steps:
-
       # ======================================
       # 1. Checkout source code
       # ======================================
-
       - name: Checkout source code
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@v3
 
       # ======================================
       # 2. Setup .NET
       # ======================================
-
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
-
 
       # ======================================
       # 3. Display .NET version
       # ======================================
-
       - name: Check .NET version
         run: dotnet --version
-
 
       # ======================================
       # 4. Restore NuGet packages
       # ======================================
-
       - name: Restore dependencies
-        run: dotnet restore
-
+        run: dotnet restore ./TestApplication.API/TestApplication.API.csproj
 
       # ======================================
       # 5. Build solution
       # ======================================
-
       - name: Build solution
-        run: dotnet build -c Release --no-restore
-
+        run: dotnet build ./TestApplication.API/TestApplication.API.csproj -c Release --no-restore
 
       # ======================================
       # 6. Publish API
       # ======================================
-
       - name: Publish API
         run: dotnet publish ./TestApplication.API/TestApplication.API.csproj -c Release -o ./publish --no-restore
-
 
       # ======================================
       # 7. Show published files
       # ======================================
-
       - name: Check published files
         shell: powershell
         run: |
           Write-Host "Published files:"
           Get-ChildItem -Path ./publish -Recurse
 
-
       # ======================================
       # 8. Deploy to Somee using FTP
       # ======================================
-
       - name: Deploy to Somee
         uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
@@ -102,11 +77,9 @@ jobs:
           local-dir: ./publish/
           server-dir: ${{ secrets.FTP_PATH }}
 
-
       # ======================================
       # 9. Deployment completed
       # ======================================
-
       - name: Deployment completed
         run: |
           echo "======================================"

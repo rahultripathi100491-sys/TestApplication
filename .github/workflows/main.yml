@@ -1,47 +1,146 @@
-name: Build and Deploy .NET API to Somee
+name: Build and Deploy .NET API
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy API
+
+  build:
+
+    name: Build
+
     runs-on: windows-latest
 
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v3
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v3
+      # ==========================================
+      # Checkout
+      # ==========================================
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      # ==========================================
+      # Setup .NET
+      # ==========================================
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Check .NET version
-        run: dotnet --version
 
-      # Restore packages from inside TestApplication.API
+      # ==========================================
+      # Find Solution
+      # ==========================================
+
+      - name: Find solution file
+        shell: powershell
+        run: |
+          Write-Host "Repository files:"
+          Get-ChildItem -Recurse -File | Select-Object FullName
+
+          $solution = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
+
+          if (-not $solution) {
+              Write-Error "No .sln file found!"
+              exit 1
+          }
+
+          Write-Host "Solution found:"
+          Write-Host $solution.FullName
+
+          "SOLUTION_PATH=$($solution.FullName)" >> $env:GITHUB_ENV
+
+
+      # ==========================================
+      # Restore
+      # ==========================================
+
       - name: Restore dependencies
-        run: dotnet restore TestApplication.API/TestApplication.API.csproj
+        run: dotnet restore "$env:SOLUTION_PATH"
 
-      # Build project
+
+      # ==========================================
+      # Build
+      # ==========================================
+
       - name: Build solution
-        run: dotnet build TestApplication.API/TestApplication.API.csproj -c Release --no-restore
+        run: dotnet build "$env:SOLUTION_PATH" --configuration Release --no-restore
 
-      # Publish project
+
+      # ==========================================
+      # Find API Project
+      # ==========================================
+
+      - name: Find API project
+        shell: powershell
+        run: |
+
+          $projects = Get-ChildItem -Recurse -Filter *.csproj
+
+          Write-Host "Projects found:"
+
+          foreach ($project in $projects) {
+              Write-Host $project.FullName
+          }
+
+          # Find project containing Microsoft.NET.Sdk.Web
+          $apiProject = $null
+
+          foreach ($project in $projects) {
+
+              $content = Get-Content $project.FullName -Raw
+
+              if ($content -match "Microsoft.NET.Sdk.Web") {
+                  $apiProject = $project
+                  break
+              }
+          }
+
+          if (-not $apiProject) {
+              Write-Error "ASP.NET Core Web project (.csproj) not found!"
+              exit 1
+          }
+
+          Write-Host "API project found:"
+          Write-Host $apiProject.FullName
+
+          "API_PROJECT=$($apiProject.FullName)" >> $env:GITHUB_ENV
+
+
+      # ==========================================
+      # Publish API
+      # ==========================================
+
       - name: Publish API
-        run: dotnet publish TestApplication.API/TestApplication.API.csproj -c Release -o ./publish --no-restore
+        run: |
+          dotnet publish "$env:API_PROJECT" `
+            --configuration Release `
+            --output ./publish `
+            --no-restore
 
-      - name: Check published files
+
+      # ==========================================
+      # Show Publish Files
+      # ==========================================
+
+      - name: Check publish files
         shell: powershell
         run: |
           Write-Host "Published files:"
-          Get-ChildItem -Path ./publish -Recurse
+          Get-ChildItem ./publish -Recurse
 
-      # Deploy via FTP
+
+      # ==========================================
+      # Deploy to Somee
+      # ==========================================
+
       - name: Deploy to Somee
         uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
@@ -51,8 +150,13 @@ jobs:
           local-dir: ./publish/
           server-dir: ${{ secrets.FTP_PATH }}
 
+
+      # ==========================================
+      # Success
+      # ==========================================
+
       - name: Deployment completed
         run: |
-          echo "======================================"
-          echo "Deployment completed successfully!"
-          echo "======================================"
+          Write-Host "===================================="
+          Write-Host "Deployment completed successfully!"
+          Write-Host "===================================="
